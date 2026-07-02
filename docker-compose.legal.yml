@@ -1,0 +1,101 @@
+name: smart-legal-brain
+
+services:
+  legal-mysql:
+    image: mysql:8.4
+    container_name: legal-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change_me_root}
+      MYSQL_DATABASE: legal_brain
+      MYSQL_USER: legal_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change_me_user}
+      TZ: Asia/Shanghai
+    ports:
+      - "3307:3306"
+    volumes:
+      - legal-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ulegal_user -p$${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  legal-redis:
+    image: redis:7-alpine
+    container_name: legal-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - legal-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  legal-etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    container_name: legal-etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - legal-etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  legal-minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: legal-minio
+    environment:
+      MINIO_ROOT_USER: legal_minio
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_minio}
+    command: minio server /minio_data --console-address ":9001"
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - legal-minio-data:/minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  legal-milvus:
+    image: milvusdb/milvus:v2.5.4
+    container_name: legal-milvus
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: legal-etcd:2379
+      MINIO_ADDRESS: legal-minio:9000
+      MINIO_ACCESS_KEY_ID: legal_minio
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change_me_minio}
+    ports:
+      - "19531:19530"
+      - "9092:9091"
+    volumes:
+      - legal-milvus-data:/var/lib/milvus
+    depends_on:
+      legal-etcd:
+        condition: service_healthy
+      legal-minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  legal-mysql-data:
+  legal-redis-data:
+  legal-etcd-data:
+  legal-minio-data:
+  legal-milvus-data:

@@ -4,7 +4,7 @@ config.ini
 logs/
 data/
 models/
-rag_qa/models/
+legal_brain/models/
 bert_results/
 bert_logs/
 tmp_trainer/
