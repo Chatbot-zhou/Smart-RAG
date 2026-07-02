@@ -1,4 +1,12 @@
-from langchain.prompts import PromptTemplate
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class PromptTemplate:
+    template: str
+
+    def format(self, **kwargs: str) -> str:
+        return self.template.format(**kwargs)
 
 
 class LegalPrompts:
@@ -25,28 +33,24 @@ class LegalPrompts:
 
 回答：
 """,
-            input_variables=["context", "history", "question", "disclaimer"],
         )
 
     @staticmethod
     def hyde_prompt() -> PromptTemplate:
         return PromptTemplate(
             template="请站在中国大陆公司法务视角，为问题生成一个简短的假设性法律答案，只输出答案。\n问题：{query}\n假设答案：",
-            input_variables=["query"],
         )
 
     @staticmethod
     def subquery_prompt() -> PromptTemplate:
         return PromptTemplate(
             template="将以下法律问题拆成不超过5个检索子问题，每行一个，不要解释。\n问题：{query}\n子问题：",
-            input_variables=["query"],
         )
 
     @staticmethod
     def backtracking_prompt() -> PromptTemplate:
         return PromptTemplate(
             template="将以下复杂法律问题简化为一个更基础、更适合检索的问题，只输出简化后的问题。\n问题：{query}\n简化问题：",
-            input_variables=["query"],
         )
 
     @staticmethod
@@ -62,6 +66,4 @@ class LegalPrompts:
 用户问题：{query}
 策略：
 """,
-            input_variables=["query"],
         )
-

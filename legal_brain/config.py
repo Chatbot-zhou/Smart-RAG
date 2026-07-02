@@ -35,7 +35,7 @@ class Settings:
         self.mysql_host = self._get(parser, "MYSQL_HOST", "mysql", "host", "localhost")
         self.mysql_port = self._get_int(parser, "MYSQL_PORT", "mysql", "port", 3307)
         self.mysql_user = self._get(parser, "MYSQL_USER", "mysql", "user", "legal_user")
-        self.mysql_password = self._get(parser, "MYSQL_PASSWORD", "mysql", "password", "")
+        self.mysql_password = self._get(parser, "MYSQL_PASSWORD", "mysql", "password", "change_me_user")
         self.mysql_database = self._get(parser, "MYSQL_DATABASE", "mysql", "database", "legal_brain")
 
         self.redis_host = self._get(parser, "REDIS_HOST", "redis", "host", "localhost")

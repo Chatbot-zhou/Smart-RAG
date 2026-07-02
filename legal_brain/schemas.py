@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class QueryRequest(BaseModel):
@@ -35,9 +35,18 @@ class ContractReviewRequest(BaseModel):
 
 
 class ContractDraftRequest(BaseModel):
-    template_type: str
+    template_type: str | None = None
+    contract_type: str | None = None
     slots: dict[str, Any]
     requirements: str | None = None
+
+    @model_validator(mode="after")
+    def ensure_template_type(self):
+        if not self.template_type:
+            self.template_type = self.contract_type
+        if not self.template_type:
+            raise ValueError("template_type or contract_type is required")
+        return self
 
 
 class AgentPlaceholderResponse(BaseModel):
@@ -46,4 +55,3 @@ class AgentPlaceholderResponse(BaseModel):
     message: str
     required_next_steps: list[str]
     rag_tool_available: bool
-

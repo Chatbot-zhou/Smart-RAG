@@ -1,5 +1,3 @@
-from openai import OpenAI
-
 from legal_brain.config import settings
 from legal_brain.logging import logger
 from legal_brain.prompts import LegalPrompts
@@ -10,10 +8,14 @@ class LegalRetrievalStrategySelector:
 
     def __init__(self):
         self.prompt = LegalPrompts.strategy_prompt()
-        self.client: OpenAI | None = None
+        self.client = None
 
-    def _client(self) -> OpenAI:
+    def _client(self):
         settings.require_llm()
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("OpenAI SDK 未安装，使用直接检索策略。") from exc
         if self.client is None:
             self.client = OpenAI(api_key=settings.dashscope_api_key, base_url=settings.dashscope_base_url)
         return self.client
@@ -33,4 +35,3 @@ class LegalRetrievalStrategySelector:
         except Exception as exc:
             logger.warning(f"策略选择失败，回退到直接检索: {exc}")
             return "直接检索"
-

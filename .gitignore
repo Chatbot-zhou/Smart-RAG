@@ -8,6 +8,7 @@ legal_brain/models/
 bert_results/
 bert_logs/
 tmp_trainer/
+.deps/
 
 __pycache__/
 *.py[cod]

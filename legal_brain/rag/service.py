@@ -1,18 +1,21 @@
 from collections.abc import Iterator
 
-from openai import OpenAI
-
 from legal_brain.config import settings
 from legal_brain.intent import intent_recognizer
 from legal_brain.logging import logger
 from legal_brain.prompts import LegalPrompts
-from legal_brain.rag.vector_store import LegalVectorStore
 from legal_brain.strategy import LegalRetrievalStrategySelector
 
 
 class LegalRAGService:
     def __init__(self):
         settings.require_llm()
+        try:
+            from openai import OpenAI
+            from legal_brain.rag.vector_store import LegalVectorStore
+        except ImportError as exc:
+            raise RuntimeError("法律问答依赖未安装，请先安装 requirements.txt。") from exc
+
         self.client = OpenAI(api_key=settings.dashscope_api_key, base_url=settings.dashscope_base_url)
         self.vector_store = LegalVectorStore()
         self.strategy_selector = LegalRetrievalStrategySelector()
@@ -56,4 +59,3 @@ class LegalRAGService:
     def retrieve_references(self, query: str, source_filter: str | None = None) -> list[dict]:
         docs = self.vector_store.search(query, domain=source_filter)
         return [doc.metadata for doc in docs]
-
