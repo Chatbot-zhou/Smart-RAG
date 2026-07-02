@@ -23,7 +23,7 @@ class IntentRequest(BaseModel):
 
 
 class IntentResponse(BaseModel):
-    intent: Literal["legal_qa", "contract_review", "contract_drafting"]
+    intent: Literal["legal_qa", "regulation_query", "risk_identification", "contract_review", "contract_drafting"]
     confidence: float
     route: str
 
@@ -55,3 +55,8 @@ class AgentPlaceholderResponse(BaseModel):
     message: str
     required_next_steps: list[str]
     rag_tool_available: bool
+
+
+class FAQImportRequest(BaseModel):
+    dataset_path: str | None = None
+    items: list[dict[str, Any]] = []

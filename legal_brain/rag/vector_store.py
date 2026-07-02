@@ -125,19 +125,36 @@ class LegalVectorStore:
             reqs=[dense_request, sparse_request],
             ranker=WeightedRanker(0.7, 1.0),
             limit=settings.retrieval_k,
-            output_fields=["text", "document_id", "title", "domain", "authority", "source_url", "parent_id", "parent_content"],
+            output_fields=[
+                "id",
+                "text",
+                "document_id",
+                "title",
+                "domain",
+                "authority",
+                "source_url",
+                "parent_id",
+                "parent_content",
+            ],
         )[0]
-        parent_docs = self._unique_parent_docs([hit["entity"] for hit in hits])
+        parent_docs = self._unique_parent_docs(hits)
         if len(parent_docs) < 2:
             return parent_docs
         pairs = [[query, doc.page_content] for doc in parent_docs]
         scores = self.reranker.predict(pairs)
-        return [doc for _, doc in sorted(zip(scores, parent_docs), reverse=True)][: settings.candidate_m]
+        reranked = []
+        for score, doc in zip(scores, parent_docs):
+            doc.metadata["rerank_score"] = float(score)
+            reranked.append((score, doc))
+        return [doc for _, doc in sorted(reranked, reverse=True)][: settings.rerank_top_n]
 
-    def _unique_parent_docs(self, hits: list[dict[str, Any]]) -> list[Document]:
+    def _unique_parent_docs(self, hits: list[Any]) -> list[Document]:
         seen = set()
         docs = []
         for hit in hits:
+            entity = hit.get("entity") if isinstance(hit, dict) else hit["entity"]
+            retrieval_score = hit.get("distance") if isinstance(hit, dict) else hit.get("distance")
+            hit = entity
             parent_content = hit.get("parent_content") or hit["text"]
             if parent_content in seen:
                 continue
@@ -152,6 +169,8 @@ class LegalVectorStore:
                         "authority": hit.get("authority"),
                         "source_url": hit.get("source_url"),
                         "parent_id": hit.get("parent_id"),
+                        "chunk_id": hit.get("id"),
+                        "retrieval_score": retrieval_score,
                     },
                 )
             )
@@ -160,4 +179,3 @@ class LegalVectorStore:
 
 if __name__ == "__main__":
     LegalVectorStore().upsert_chunks_from_jsonl()
-

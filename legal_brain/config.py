@@ -76,6 +76,13 @@ class Settings:
                 str(PROJECT_ROOT / "models" / "legal_intent_classifier"),
             )
         )
+        self.intent_labels = self._get_list(
+            parser,
+            "INTENT_LABELS",
+            "models",
+            "intent_labels",
+            ["legal_qa", "regulation_query", "risk_identification", "contract_review", "contract_drafting"],
+        )
         self.model_device = self._get(parser, "MODEL_DEVICE", "models", "device", "auto")
 
         self.legal_seed_file = self._path(
@@ -85,6 +92,15 @@ class Settings:
                 "data",
                 "legal_seed_file",
                 str(PROJECT_ROOT / "data_sources" / "legal_seed.yml"),
+            )
+        )
+        self.legal_source_file = self._path(
+            self._get(
+                parser,
+                "LEGAL_SOURCE_FILE",
+                "data",
+                "legal_source_file",
+                str(PROJECT_ROOT / "data_sources" / "official_legal_sources.yml"),
             )
         )
         self.legal_corpus_dir = self._path(
@@ -98,6 +114,16 @@ class Settings:
         self.chunk_overlap = self._get_int(parser, "CHUNK_OVERLAP", "retrieval", "chunk_overlap", 80)
         self.retrieval_k = self._get_int(parser, "RETRIEVAL_K", "retrieval", "retrieval_k", 10)
         self.candidate_m = self._get_int(parser, "CANDIDATE_M", "retrieval", "candidate_m", 2)
+        self.rerank_top_n = self._get_int(parser, "RERANK_TOP_N", "retrieval", "rerank_top_n", 2)
+        self.faq_match_threshold = self._get_float(parser, "FAQ_MATCH_THRESHOLD", "faq", "match_threshold", 0.85)
+        self.faq_high_confidence_threshold = self._get_float(
+            parser, "FAQ_HIGH_CONFIDENCE_THRESHOLD", "faq", "high_confidence_threshold", 0.9
+        )
+        self.faq_bm25_weight = self._get_float(parser, "FAQ_BM25_WEIGHT", "faq", "bm25_weight", 0.3)
+        self.faq_embedding_weight = self._get_float(parser, "FAQ_EMBEDDING_WEIGHT", "faq", "embedding_weight", 0.7)
+        self.hot_question_ttl_seconds = self._get_int(parser, "HOT_QUESTION_TTL_SECONDS", "faq", "hot_question_ttl_seconds", 604800)
+        self.hot_question_promote_hits = self._get_int(parser, "HOT_QUESTION_PROMOTE_HITS", "faq", "hot_question_promote_hits", 3)
+        self.corpus_version = self._get(parser, "CORPUS_VERSION", "data", "corpus_version", "legal-corpus-dev")
         self.legal_domains = self._get_list(
             parser,
             "LEGAL_DOMAINS",
@@ -120,6 +146,14 @@ class Settings:
         if env_value is not None:
             return int(env_value)
         return parser.getint(section, option, fallback=fallback)
+
+    def _get_float(
+        self, parser: configparser.ConfigParser, env_name: str, section: str, option: str, fallback: float
+    ) -> float:
+        env_value = os.getenv(env_name)
+        if env_value is not None:
+            return float(env_value)
+        return parser.getfloat(section, option, fallback=fallback)
 
     def _get_list(
         self, parser: configparser.ConfigParser, env_name: str, section: str, option: str, fallback: list[str]

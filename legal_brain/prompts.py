@@ -42,6 +42,19 @@ class LegalPrompts:
         )
 
     @staticmethod
+    def query_rewrite_prompt() -> PromptTemplate:
+        return PromptTemplate(
+            template="""请将用户问题改写为适合中国大陆企业法务知识库检索的查询语句。
+要求：
+1. 保留原问题的事实边界，不扩大主体、金额、时间或合同类型。
+2. 补充常见法律检索词，例如合同、公司治理、劳动用工、违约责任、合规风险。
+3. 只输出一条改写后的检索 query。
+
+用户原始问题：{query}
+检索 query：""",
+        )
+
+    @staticmethod
     def subquery_prompt() -> PromptTemplate:
         return PromptTemplate(
             template="将以下法律问题拆成不超过5个检索子问题，每行一个，不要解释。\n问题：{query}\n子问题：",

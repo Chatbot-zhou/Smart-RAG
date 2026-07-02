@@ -3,6 +3,7 @@ import json
 import re
 import time
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,14 +14,19 @@ from starlette.websockets import WebSocketDisconnect
 from legal_brain.agent.controller import agent_controller
 from legal_brain.config import settings
 from legal_brain.app_service import SmartLegalBrain
+from legal_brain.data.corpus import corpus_paths, load_manifest
+from legal_brain.data.faq_importer import import_faq_dataset
 from legal_brain.schemas import (
     AgentPlaceholderResponse,
     ContractDraftRequest,
     ContractReviewRequest,
+    FAQImportRequest,
     IntentRequest,
     IntentResponse,
     QueryRequest,
 )
+from legal_brain.storage.mysql import LegalMySQLStore
+from legal_brain.storage.redis_cache import LegalRedisCache
 
 
 app = FastAPI(title=f"{settings.app_name} API", description="面向中国大陆公司法务场景的法律 RAG 与 Agent 接口")
@@ -137,6 +143,122 @@ async def detect_agent_intent(request: IntentRequest):
     return agent_controller.route(request.text)
 
 
+@app.get("/api/system/status")
+async def system_status():
+    status = {
+        "app_name": settings.app_name,
+        "corpus_version": settings.corpus_version,
+        "mysql": {"ok": False},
+        "redis": {"ok": False},
+        "milvus": {"ok": False},
+        "models": {
+            "bert": {"configured_path": str(settings.query_classifier_model), "available": settings.query_classifier_model.exists()},
+            "embedding": {"name": settings.embedding_model},
+            "reranker": {"name": settings.reranker_model},
+            "qwen": {"model": settings.llm_model, "api_configured": bool(settings.dashscope_api_key)},
+            "ragas": {"available": False},
+        },
+    }
+    try:
+        store = LegalMySQLStore()
+        status["mysql"] = {"ok": True, **store.legal_document_summary()}
+        store.close()
+    except Exception as exc:
+        status["mysql"] = {"ok": False, "error": str(exc)}
+    try:
+        status["redis"] = {"ok": bool(LegalRedisCache().client.ping()), "ttl_seconds": settings.hot_question_ttl_seconds}
+    except Exception as exc:
+        status["redis"] = {"ok": False, "error": str(exc)}
+    try:
+        import socket
+
+        with socket.create_connection((settings.milvus_host, int(settings.milvus_port)), timeout=2):
+            status["milvus"] = {"ok": True, "host": settings.milvus_host, "port": settings.milvus_port}
+    except Exception as exc:
+        status["milvus"] = {"ok": False, "error": str(exc)}
+    try:
+        import ragas  # noqa: F401
+
+        status["models"]["ragas"]["available"] = True
+    except Exception as exc:
+        status["models"]["ragas"]["error"] = str(exc)
+    return status
+
+
+@app.get("/api/faqs")
+async def list_faqs(limit: int = 100):
+    store = LegalMySQLStore()
+    items = store.list_faq_items(limit=limit)
+    store.close()
+    return {"items": items}
+
+
+@app.post("/api/faqs/import")
+async def import_faqs(request: FAQImportRequest):
+    if request.dataset_path:
+        count = import_faq_dataset(Path(request.dataset_path))
+        return {"imported": count}
+    if request.items:
+        from legal_brain.retrieval.preprocess import normalize_query
+
+        store = LegalMySQLStore()
+        count = 0
+        for item in request.items:
+            question = item.get("question") or item.get("original_question")
+            answer = item.get("answer")
+            if not question or not answer:
+                continue
+            store.upsert_faq_item(
+                {
+                    "original_question": question,
+                    "normalized_question": normalize_query(question),
+                    "answer": answer,
+                    "category": item.get("category", ""),
+                    "source": item.get("source", ""),
+                    "source_type": item.get("source_type", "curated"),
+                    "review_status": item.get("review_status", "approved"),
+                    "faq_version": item.get("faq_version", "faq-dev"),
+                    "corpus_version": item.get("corpus_version", settings.corpus_version),
+                }
+            )
+            count += 1
+        store.close()
+        return {"imported": count}
+    raise HTTPException(status_code=400, detail="dataset_path or items is required")
+
+
+@app.get("/api/corpus/manifest")
+async def corpus_manifest():
+    paths = corpus_paths()
+    try:
+        manifest = load_manifest(paths["manifest"])
+    except Exception as exc:
+        return {
+            "available": False,
+            "error": str(exc),
+            "manifest_path": str(paths["manifest"]),
+            "raw_dir": str(paths["raw"]),
+            "text_dir": str(paths["text"]),
+        }
+    return {"available": True, "count": len(manifest), "items": manifest}
+
+
+@app.get("/api/evaluations/ragas")
+async def ragas_evaluations(limit: int = 50):
+    store = LegalMySQLStore()
+    runs = store.list_ragas_eval_runs(limit=limit)
+    store.close()
+    return {"items": runs}
+
+
+@app.get("/api/qa/{session_id}")
+async def qa_records(session_id: str):
+    store = LegalMySQLStore()
+    records = store.list_qa_records_by_session(session_id)
+    store.close()
+    return {"session_id": session_id, "items": records}
+
+
 @app.post("/api/contracts/review", response_model=AgentPlaceholderResponse)
 async def review_contract(_: ContractReviewRequest):
     return agent_controller.contract_review_placeholder()
@@ -170,6 +292,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         "is_complete": True,
                         "processing_time": time.time() - start_time,
                         "disclaimer": settings.service_disclaimer,
+                        "references": [],
+                        "answer_type": "greeting",
+                        "corpus_version": settings.corpus_version,
                     }
                 )
                 continue
@@ -191,6 +316,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "is_complete": True,
                             "processing_time": time.time() - start_time,
                             "disclaimer": settings.service_disclaimer,
+                            **brain.last_response_metadata,
                         }
                     )
                     break
@@ -205,4 +331,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("app:app", host="127.0.0.1", port=10000, reload=False)
-

@@ -8,6 +8,8 @@ class AgentDecisionController:
         intent, confidence = intent_recognizer.classify(text)
         route = {
             "legal_qa": "rag_answer",
+            "regulation_query": "rag_answer",
+            "risk_identification": "rag_answer",
             "contract_review": "contract_review_agent",
             "contract_drafting": "contract_drafting_agent",
         }[intent]
@@ -33,4 +35,3 @@ class AgentDecisionController:
 
 
 agent_controller = AgentDecisionController()
-
